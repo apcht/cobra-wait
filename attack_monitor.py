@@ -4,6 +4,7 @@ import requests
 
 URL = "https://raw.githubusercontent.com/mitre/cti/master/enterprise-attack/enterprise-attack.json"
 CACHE_FILE = "attack_data.json"
+LOG_FILE = "attack_changes.log"
 
 def download_attack_data(url):
     """Downloads the ATT&CK data from the given URL."""
@@ -52,8 +53,10 @@ def _format_ttp_alert(ttp_object):
         f"  - Description: {description}"
     )
 
-def compare_data(old_data, new_data):
-    """Compares old and new ATT&CK data and prints alerts for changes."""
+import datetime
+
+def compare_data(old_data, new_data, log_file):
+    """Compares old and new ATT&CK data and prints/logs alerts for changes."""
     old_objects = {obj['id']: obj for obj in old_data.get('objects', []) if obj.get('type') in ['attack-pattern', 'intrusion-set', 'malware', 'tool']}
     new_objects = {obj['id']: obj for obj in new_data.get('objects', []) if obj.get('type') in ['attack-pattern', 'intrusion-set', 'malware', 'tool']}
 
@@ -72,15 +75,34 @@ def compare_data(old_data, new_data):
                 if formatted_alert:
                     updated_ttps.append(formatted_alert)
 
+    if not new_ttps and not updated_ttps:
+        print("No new or updated TTPs found.")
+        return
+
+    log_content = []
+
     if new_ttps:
-        print("\n[+] Found New TTPs:")
+        header = "\n[+] Found New TTPs:"
+        print(header)
+        log_content.append(header)
         for ttp in new_ttps:
             print(ttp + "\n")
+            log_content.append(ttp + "\n")
 
     if updated_ttps:
-        print("\n[*] Found Updated TTPs:")
+        header = "\n[*] Found Updated TTPs:"
+        print(header)
+        log_content.append(header)
         for ttp in updated_ttps:
             print(ttp + "\n")
+            log_content.append(ttp + "\n")
+
+    with open(log_file, 'a', encoding='utf-8') as f:
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        f.write(f"\n--- Changes detected at {timestamp} ---\n")
+        f.write("\n".join(log_content))
+        f.write("\n--- End of report ---\n")
+    print(f"Changes have been appended to {log_file}")
 
 def main():
     """Main function to monitor MITRE ATT&CK TTPs."""
@@ -93,7 +115,7 @@ def main():
     old_data = load_local_cache(CACHE_FILE)
 
     if old_data:
-        compare_data(old_data, new_data)
+        compare_data(old_data, new_data, LOG_FILE)
     else:
         print("No local cache found. Creating one...")
 
