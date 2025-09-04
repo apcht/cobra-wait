@@ -27,18 +27,60 @@ def save_local_cache(filepath, data):
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
 
+def _format_ttp_alert(ttp_object):
+    """Formats a TTP object into a human-readable string."""
+    name = ttp_object.get('name', 'N/A')
+    description = ttp_object.get('description', 'No description available.').strip()
+
+    # Truncate description for brevity
+    if len(description) > 150:
+        description = description[:150] + '...'
+
+    # Extract external reference info safely
+    ext_ref = ttp_object.get('external_references', [{}])[0]
+    ttp_id = ext_ref.get('external_id', 'N/A')
+    ttp_url = ext_ref.get('url', 'URL not available')
+
+    # Filter out objects that are not attack-patterns, intrusions-sets, etc.
+    if not ttp_object.get('type', '').startswith(('attack-pattern', 'intrusion-set', 'malware', 'tool')):
+        return None
+
+    return (
+        f"  - Name: {name}\n"
+        f"  - ID: {ttp_id}\n"
+        f"  - URL: {ttp_url}\n"
+        f"  - Description: {description}"
+    )
+
 def compare_data(old_data, new_data):
     """Compares old and new ATT&CK data and prints alerts for changes."""
-    old_objects = {obj['id']: obj for obj in old_data.get('objects', [])}
-    new_objects = {obj['id']: obj for obj in new_data.get('objects', [])}
+    old_objects = {obj['id']: obj for obj in old_data.get('objects', []) if obj.get('type') in ['attack-pattern', 'intrusion-set', 'malware', 'tool']}
+    new_objects = {obj['id']: obj for obj in new_data.get('objects', []) if obj.get('type') in ['attack-pattern', 'intrusion-set', 'malware', 'tool']}
+
+    new_ttps = []
+    updated_ttps = []
 
     for obj_id, new_obj in new_objects.items():
         if obj_id not in old_objects:
-            print(f"[+] New TTP found: {new_obj.get('name')} ({new_obj.get('external_references', [{}])[0].get('external_id', '')})")
+            formatted_alert = _format_ttp_alert(new_obj)
+            if formatted_alert:
+                new_ttps.append(formatted_alert)
         else:
             old_obj = old_objects[obj_id]
             if new_obj.get('modified') != old_obj.get('modified'):
-                print(f"[*] Updated TTP found: {new_obj.get('name')} ({new_obj.get('external_references', [{}])[0].get('external_id', '')})")
+                formatted_alert = _format_ttp_alert(new_obj)
+                if formatted_alert:
+                    updated_ttps.append(formatted_alert)
+
+    if new_ttps:
+        print("\n[+] Found New TTPs:")
+        for ttp in new_ttps:
+            print(ttp + "\n")
+
+    if updated_ttps:
+        print("\n[*] Found Updated TTPs:")
+        for ttp in updated_ttps:
+            print(ttp + "\n")
 
 def main():
     """Main function to monitor MITRE ATT&CK TTPs."""
